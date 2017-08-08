@@ -2,15 +2,41 @@ import torch
 import codecs
 import torchtext.data
 import torchtext.vocab
+import numpy as np
 
 
 PAD_WORD = "<pad>"
+FIX_LENGTH_SRC = 360
 
 
 class StoryDataset(torchtext.data.Dataset):
 
     def __init__(self, fields, src_path, question_path,
-                 feature_path, tgt_path, **kwargs):
+                 feature_path, tgt_path, opt=None, **kwargs):
+
+        def src_preprocessing(src_list):
+            if len(src_list) == FIX_LENGTH_SRC:
+                return src_list
+
+            processed_src = []
+            chunked_src = np.array_split(np.array(src_list), 10)
+            if len(src_list) < FIX_LENGTH_SRC:
+                for c in chunked_src:
+                    num_pad = FIX_LENGTH_SRC / 10 - len(c)
+                    temp = c.tolist()
+                    temp1 = [PAD_WORD] * int(num_pad / 2)
+                    temp2 = [PAD_WORD] * int(num_pad - len(temp1))
+                    processed_src.append(temp1)
+                    processed_src.append(temp)
+                    processed_src.append(temp2)
+            else:
+                for c in chunked_src:
+                    start = int((len(c) - FIX_LENGTH_SRC / 10) / 2)
+                    temp = c[start:int(start + FIX_LENGTH_SRC / 10)].tolist()
+                    processed_src.append(temp)
+            processed_src = [item for sublist in processed_src for item in sublist]
+            return processed_src
+
         examples = []
         self.src_vocabs = []
         with codecs.open(src_path, 'r', 'utf-8') as src_file, \
@@ -19,8 +45,8 @@ class StoryDataset(torchtext.data.Dataset):
              codecs.open(tgt_path, 'r', 'utf-8') as t_file:
             for i, (src_line, q_line, f_line, t_line) in enumerate(
                     zip(src_file, q_file, f_file, t_file)):
-
                 src = src_line.strip().split()
+                src = src_preprocessing(src)
                 question = q_line.strip().split()
                 feature = f_line.strip().split()
                 feature = [float(x) for x in feature]
@@ -42,11 +68,11 @@ class StoryDataset(torchtext.data.Dataset):
         return -len(ex.src)
 
     @staticmethod
-    def get_fields(opt):
+    def get_fields():
         fields = {}
         fields['src'] = torchtext.data.Field(
+            fix_length=FIX_LENGTH_SRC,
             pad_token=PAD_WORD,
-            fix_length=opt.fix_length,
             lower=True,
             include_lengths=True)
 
